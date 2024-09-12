@@ -1,0 +1,1 @@
+from .SeqClsForEvo import SeqClsForEvo as SequenceClassifacationForEvo
