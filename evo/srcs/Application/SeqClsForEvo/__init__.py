@@ -31,7 +31,7 @@ class SeqClsForEvo(StripedHyenaPreTrainedModel):
     def __init__(self, config, **kwargs):
         super().__init__(config, **kwargs)
         model_config = dotdict(config.to_dict())
-        self.backbone = EmbedStripedHyena(model_config)
+        self.backbone = EmbedStripedHyena(model_config)#this will be replaced by `StripedHyena`class with choosing output emb-info or not.
         self.backbone.gradient_checkpointing = False
         self.config = config
         vocab_size = config.vocab_size
