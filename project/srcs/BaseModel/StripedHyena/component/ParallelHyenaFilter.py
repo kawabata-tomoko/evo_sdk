@@ -42,7 +42,8 @@ class ParallelHyenaFilter(nn.Module):
         self.data_dtype = None
 
         if self.use_flash_depthwise:
-            self.fir_fn = FlashDepthwiseConv1d(#TODO: check this import.
+            from flashfftconv import FlashDepthwiseConv1d
+            self.fir_fn = FlashDepthwiseConv1d(
                 channels=3 * self.hidden_size,
                 kernel_size=self.short_filter_length,
                 padding=self.short_filter_length - 1,
