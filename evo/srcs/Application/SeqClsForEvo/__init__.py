@@ -1,8 +1,8 @@
 import torch
 from torch import nn
-from project.srcs.BaseModel.StripedHyena import StripedHyena
-from project.srcs.BaseModel import StripedHyenaPreTrainedModel
-from project.utils.utils import dotdict
+from evo.srcs.BaseModel.StripedHyena import StripedHyena
+from evo.srcs.BaseModel import StripedHyenaPreTrainedModel
+from evo.utils.utils import dotdict
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers.utils import logging

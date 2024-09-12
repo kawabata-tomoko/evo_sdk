@@ -2,11 +2,11 @@
 import torch
 import torch.nn as nn
 
-from project.srcs.BaseModel.StripedHyena.component.ParallelGatedMLP import ParallelGatedMLP
-from project.srcs.BaseModel.StripedHyena.component.RMSNorm import RMSNorm
-from project.srcs.BaseModel.StripedHyena.component.RMSNorm import VocabParallelEmbedding,Embedding
-from project.srcs.BaseModel.StripedHyena.component.ParallelHyenaFilter import ParallelHyenaFilter
-from project.srcs.BaseModel.StripedHyena.component.AttentionBlock import AttentionBlock
+from evo.srcs.BaseModel.StripedHyena.component.ParallelGatedMLP import ParallelGatedMLP
+from evo.srcs.BaseModel.StripedHyena.component.RMSNorm import RMSNorm
+from evo.srcs.BaseModel.StripedHyena.component.RMSNorm import VocabParallelEmbedding,Embedding
+from evo.srcs.BaseModel.StripedHyena.component.ParallelHyenaFilter import ParallelHyenaFilter
+from evo.srcs.BaseModel.StripedHyena.component.AttentionBlock import AttentionBlock
 
 
 class ParallelGatedConvBlock(nn.Module):

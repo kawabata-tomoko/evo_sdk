@@ -2,8 +2,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from project.srcs.BaseModel.inference.engine import HyenaInferenceEngine
-from project.utils.utils import column_split
+from evo.srcs.BaseModel.inference.engine import HyenaInferenceEngine
+from evo.utils.utils import column_split
 
 
 class ParallelHyenaFilter(nn.Module):

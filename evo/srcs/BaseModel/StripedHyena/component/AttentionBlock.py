@@ -2,8 +2,8 @@
 import torch
 import torch.nn as nn
 
-from project.srcs.BaseModel.StripedHyena.component.ParallelGatedMLP import ParallelGatedMLP
-from project.srcs.BaseModel.StripedHyena.component.RMSNorm import RMSNorm
+from evo.srcs.BaseModel.StripedHyena.component.ParallelGatedMLP import ParallelGatedMLP
+from evo.srcs.BaseModel.StripedHyena.component.RMSNorm import RMSNorm
 
 try:
     from flash_attn.modules.mha import MHA

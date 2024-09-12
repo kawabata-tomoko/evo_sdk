@@ -6,9 +6,9 @@ from torch.nn import functional as F
 from transformers.modeling_outputs import CausalLMOutput, CausalLMOutputWithPast
 from transformers.utils import logging
 from typing import Optional, Tuple, Union
-from project.srcs.BaseModel.StripedHyena import StripedHyena
-from project.utils.utils import dotdict
-from project.srcs.BaseModel.StripedHyenaPreTrainedModel import StripedHyenaPreTrainedModel
+from evo.srcs.BaseModel.StripedHyena import StripedHyena
+from evo.utils.utils import dotdict
+from evo.srcs.BaseModel.StripedHyenaPreTrainedModel import StripedHyenaPreTrainedModel
 
 logger = logging.get_logger(__name__)
 

@@ -5,11 +5,11 @@
 import torch
 import torch.nn as nn
 
-from project.srcs.BaseModel.inference.cache import (
+from evo.srcs.BaseModel.inference.cache import (
     InferenceParams,
     RecurrentInferenceParams,
 )
-from project.srcs.BaseModel.StripedHyena.component import (
+from evo.srcs.BaseModel.StripedHyena.component import (
     AttentionBlock,
     ParallelGatedConvBlock,
     ParallelHyenaFilter,
@@ -17,7 +17,7 @@ from project.srcs.BaseModel.StripedHyena.component import (
     VocabParallelEmbedding,
     Embedding,
 )
-from project.utils.utils import print_rank_0
+from evo.utils.utils import print_rank_0
 
 
 def get_block(config, layer_idx, flash_fft=None):

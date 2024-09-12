@@ -13,7 +13,7 @@ try:
     import conv1d_cpp #TODO: Check this?
 except:
     pass
-from project.utils.utils import column_split
+from evo.utils.utils import column_split
 
 IIR_PREFILL_MODES = [
     "recurrence",
