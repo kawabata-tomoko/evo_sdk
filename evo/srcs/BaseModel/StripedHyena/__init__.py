@@ -74,7 +74,8 @@ class StripedHyena(nn.Module):
             )
 
         x = self.norm(x)
-        x = self.unembed.unembed(x)
+        if self.config.unembed==True:
+            x = self.unembed.unembed(x)
         return x, inference_params_dict_out
 
     def stateful_forward(self, x, inference_params_dict=None):
