@@ -10,28 +10,11 @@ from typing import Optional, Tuple, Union
 import torch.nn.init as init
 logger = logging.get_logger(__name__)
 
-class EmbedStripedHyena(StripedHyena):
-    def __init__(self,contig):
-        super().__init__(contig)
-    def forward(self, x, inference_params_dict=None, padding_mask=None):
-        L = x.shape[1]
-        x = self.embedding_layer.embed(x)
-        if inference_params_dict is not None:
-            x, inference_params_dict_out = self.stateful_forward(
-                x,
-                inference_params_dict=inference_params_dict,
-            )
-        else:
-            x, inference_params_dict_out = self.stateless_forward(x, padding_mask=padding_mask)
-
-        x = self.norm(x)
-        # x = self.unembed.unembed(x)
-        return x, inference_params_dict_out
 class SeqClsForEvo(StripedHyenaPreTrainedModel):
     def __init__(self, config, **kwargs):
         super().__init__(config, **kwargs)
         model_config = dotdict(config.to_dict())
-        self.backbone = EmbedStripedHyena(model_config)#this will be replaced by `StripedHyena`class with choosing output emb-info or not.
+        self.backbone = StripedHyena(model_config)
         self.backbone.gradient_checkpointing = False
         self.config = config
         vocab_size = config.vocab_size
@@ -42,9 +25,9 @@ class SeqClsForEvo(StripedHyenaPreTrainedModel):
 
         self.vocab_size = vocab_size
         self.num_labels = config.num_labels
-        self.hidden = torch.nn.Linear(config.hidden_size,config.hidden_size*2).to(torch.bfloat16)
-        self.classifier = torch.nn.Linear(config.hidden_size*2,self.num_labels).to(torch.bfloat16)#load as bf16
-        self.ln_hidden = torch.nn.LayerNorm(config.hidden_size*2,dtype=torch.bfloat16)
+        self.hidden = torch.nn.Linear(config.hidden_size,config.hidden_size*2,dtype=torch.float32)#.to(torch.bfloat16)
+        self.classifier = torch.nn.Linear(config.hidden_size*2,self.num_labels,dtype=torch.float32)#.to(torch.bfloat16)#load as bf16
+        self.ln_hidden = torch.nn.LayerNorm(config.hidden_size*2,dtype=torch.float32)
         self.post_init()
         self.force_dtype()
         
@@ -91,7 +74,7 @@ class SeqClsForEvo(StripedHyenaPreTrainedModel):
             padding_mask=attention_mask,
             inference_params_dict=past_key_values if use_cache else None,
         )
-
+        logits=logits.to(dtype=self.hidden.weight.dtype)
         # feature=logits[:,-1,:] #use [EOS] Instead [CLS]
         eos_index=eos_index.to(logits.device)
         feature = logits.gather(1, eos_index.unsqueeze(-1).expand(-1, -1, logits.size(-1)))

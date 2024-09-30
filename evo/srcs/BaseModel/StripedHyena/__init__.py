@@ -80,9 +80,7 @@ class StripedHyena(nn.Module):
 
     def stateful_forward(self, x, inference_params_dict=None):
         for block_idx, block in enumerate(self.blocks):
-            block_name = "mha" if block_idx in self.config.attn_layer_idxs else "hyena"
-            inference_params = inference_params_dict[block_name]
-            x, _ = block(x, inference_params=inference_params)
+            x, _ = block(x, inference_params=inference_params_dict["mha" if block_idx in self.config.attn_layer_idxs else "hyena"])
 
         return x, inference_params_dict
 

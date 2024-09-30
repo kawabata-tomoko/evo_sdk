@@ -95,17 +95,11 @@ class ParallelHyenaFilter(nn.Module):
         if inference_params:
             inference_params.fir_state_dict[self.layer_idx] = fir_state
 
-        if self.h is None:
-            h, filter_dtype, poles, residues = self.compute_filter(L, u.device)
-        else:
-            h = self.h
-            filter_dtype = self.h.dtype
+        h, _ = (self.compute_filter(L, u.device)[:2] if self.h is None else (self.h, self.h.dtype))
 
         if self.hyena_filter_groups > 1:
             h = h.repeat_interleave(self.hidden_size // self.hyena_filter_groups, 1)
 
-        # if inference_params is not None, we plan to perform generation:
-        # prefilling is handled by the engine.
         dims = (
             self.hidden_size,
             self.num_attention_heads,
@@ -134,6 +128,7 @@ class ParallelHyenaFilter(nn.Module):
 
         return y, inference_params
 
+
     def sequential_forward(self, u, inference_params):
         if self.data_dtype is None:
             self.data_dtype = u.dtype
@@ -148,27 +143,21 @@ class ParallelHyenaFilter(nn.Module):
         z_pre, fir_state = self.engine.step_fir(
             u, fir_state, weight=self.short_filter_weight, bias=self.short_filter_bias
         )
-        x2, x1, v = (
-            column_split(z_pre, self.num_attention_heads, self.hidden_size_per_attention_head)
-            if self.column_split_hyena
-            else z_pre.split([self.hidden_size, self.hidden_size, self.hidden_size], dim=1)
-        )
+
+        if self.column_split_hyena:
+            x2, x1, v = column_split(z_pre, self.num_attention_heads, self.hidden_size_per_attention_head)
+        else:
+            x2, x1, v = z_pre.split([self.hidden_size, self.hidden_size, self.hidden_size], dim=1)
 
         y, iir_state = self.engine.step_iir(
-            x2,
-            x1,
-            v,
-            self.D,
-            self.residues,
-            self.poles,
-            iir_state,
-            iir_groups=self.hyena_filter_groups,
+            x2, x1, v, self.D, self.residues, self.poles, iir_state, iir_groups=self.hyena_filter_groups
         )
 
         inference_params.fir_state_dict[self.layer_idx] = fir_state
         inference_params.state_dict[self.layer_idx] = iir_state
-        y = y.to(dtype=self.data_dtype)
-        return y[:, None], inference_params
+
+        return y.to(dtype=self.data_dtype)[:, None], inference_params
+
 
     def update_time(self, L, device):
         """

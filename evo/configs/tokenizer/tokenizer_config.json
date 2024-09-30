@@ -1,0 +1,53 @@
+{
+  "_commit_hash": null,
+  "_from_auto": true,
+  "added_tokens_decoder": {
+    "38": {
+      "content": "&",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "64": {
+      "content": "@",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "78": {
+      "content": "N",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "94": {
+      "content": "^",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    }
+  },
+  "auto_map": {
+    "AutoTokenizer": [
+      "ByteTokenizer.ByteTokenizer",
+      null
+    ]
+  },
+  "bos_token": "^",
+  "byte_level": true,
+  "clean_up_tokenization_spaces": true,
+  "cls_token": "@",
+  "eos_token": "&",
+  "model_max_length": 1000000000000000019884624838656,
+  "pad_token": "N",
+  "tokenizer_class": "ByteTokenizer",
+  "trust_remote_code": true
+}

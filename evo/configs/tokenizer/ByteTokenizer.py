@@ -8,10 +8,9 @@ import numpy as np
 from os import PathLike
 from typing import List, Tuple, Dict
 
-from tokenizers import Tokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding, TruncationStrategy
-from transformers.utils.generic import TensorType, PaddingStrategy
+from transformers.utils.generic import PaddingStrategy
 
 
 EMPTY: str = ""

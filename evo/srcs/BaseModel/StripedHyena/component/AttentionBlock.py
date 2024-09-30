@@ -11,12 +11,10 @@ except ImportError:
     "flash_attn not installed"
     
 try:
-    from ...tokenizer.positional_embeddings import swap_mha_rope
+    from evo.srcs.BaseModel.StripedHyena.component.positional_embeddings import swap_mha_rope
 except ImportError:
     "could not import swap_mha_rope from positional_embeddings.py"
 
-# dummy import to force huggingface to bundle the tokenizer
-from ...tokenizer import ByteTokenizer
 
 class AttentionBlock(nn.Module):
     def __init__(self, config, layer_idx) -> None:
@@ -58,19 +56,11 @@ class AttentionBlock(nn.Module):
         self.mlp = ParallelGatedMLP(config).to(dtype=mlp_dtype)
 
     def forward(self, u, inference_params=None, padding_mask=None, *args, **kwargs):
-        if (
-            type(padding_mask) == torch.Tensor
-        ):  # workaround for masking bug in FA. This works because Wqkv does not have bias
-            # and attention scores will be also automatically zeroed.
-            u = u * padding_mask[..., None]
-        u = (
-            self.inner_mha_cls(
-                self.pre_norm(u),
-                inference_params=inference_params,
-            )
-            + u
-        )
-        if type(padding_mask) == torch.Tensor:  # guard against bias
-            u = u * padding_mask[..., None]
-        u = self.mlp(self.post_norm(u)) + u
-        return u, None
+        if isinstance(padding_mask, torch.Tensor):  # workaround for masking bug in FA
+            u *= padding_mask[..., None]
+            
+        u = self.inner_mha_cls(self.pre_norm(u), inference_params=inference_params) + u
+        
+        if isinstance(padding_mask, torch.Tensor):  # guard against bias
+            u *= padding_mask[..., None]
+        return self.mlp(self.post_norm(u)) + u, None

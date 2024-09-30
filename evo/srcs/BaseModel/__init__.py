@@ -11,6 +11,5 @@ from .inference import (
     list_tensors,
     HyenaInferenceEngine
 )
-from .tokenizer import ByteTokenizer
 from .StripedHyenaPreTrainedModel import StripedHyenaPreTrainedModel
 from .configuration_hyena import StripedHyenaConfig
