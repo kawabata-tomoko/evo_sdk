@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from evo.srcs.BaseModel.inference.engine import HyenaInferenceEngine
+from evo.srcs.BaseModel.StripedHyena.inference.engine import HyenaInferenceEngine
 from evo.utils.utils import column_split
 
 
@@ -40,7 +40,8 @@ class ParallelHyenaFilter(nn.Module):
         self.engine = HyenaInferenceEngine(layer_idx=layer_idx)
         self.use_flash_depthwise = config.get("use_flash_depthwise", False)
         self.data_dtype = None
-
+        
+        #short convlution filter initialized
         if self.use_flash_depthwise:
             from flashfftconv import FlashDepthwiseConv1d
             self.fir_fn = FlashDepthwiseConv1d(

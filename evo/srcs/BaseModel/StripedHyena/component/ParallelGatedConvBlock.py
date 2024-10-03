@@ -13,8 +13,12 @@ class ParallelGatedConvBlock(nn.Module):
         self.config = config
         self.layer_idx = layer_idx
         self.low_mem_mode = config.get("low_mem_mode", False)
-        dtype = config.get("hyena_block_dtype", torch.float32)
-        mlp_dtype = config.get("mlp_dtype", torch.bfloat16)
+        dtype = config.get("hyena_block_dtype", torch.float32)#could not receive a string type args.
+        mlp_dtype = config.get("mlp_dtype", torch.bfloat16)#same above.
+        if type(dtype)==str:
+            dtype=torch.float16 if dtype=="ft16" else torch.bfloat16 if dtype=="bf16" else torch.float32 
+        if type(mlp_dtype)==str:
+            mlp_dtype=torch.float16 if dtype=="ft16" else torch.float32 if dtype=="ft32" else torch.bfloat16
         self.pre_norm, self.post_norm = RMSNorm(config).to(dtype=dtype), RMSNorm(config).to(dtype=dtype)
         self.filter = ParallelHyenaFilter(config, layer_idx).to(dtype=dtype)
         self.projections = nn.Linear(config.hidden_size, 3 * config.hidden_size)
