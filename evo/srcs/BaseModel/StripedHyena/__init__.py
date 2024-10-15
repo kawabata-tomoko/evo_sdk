@@ -86,7 +86,7 @@ class StripedHyena(nn.Module):
 
     def stateless_forward(self, x, padding_mask=None):
         if type(padding_mask) == torch.Tensor:
-            x = x * padding_mask[..., None]
+            x = x * padding_mask[..., None]#elements multiple,x:[batch,seq_len,hidden],padding_mask:[seq_len,None]
 
         for _, block in enumerate(self.blocks):
             x, _ = block(x, inference_params=None, padding_mask=padding_mask)

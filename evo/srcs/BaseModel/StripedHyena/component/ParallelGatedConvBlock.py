@@ -44,15 +44,13 @@ class ParallelGatedConvBlock(nn.Module):
         z = self.proj_norm_fn(u)
 
         if type(padding_mask) == torch.Tensor:  # guard against bias
-            z = z * padding_mask[..., None]
+            z = z * padding_mask[..., None]#elements multiple,z:[batch,seq_len,3*hidden],padding_mask:[seq_len,None]
 
         z, inference_params = self.filter(z, inference_params=inference_params, padding_mask=padding_mask)
 
-        z_in = self.out_filter_dense(z) + u
+        z = self.out_filter_dense(z) + u
 
         if type(padding_mask) == torch.Tensor:  # guard against bias
-            z_in = z_in * padding_mask[..., None]
+            z = z * padding_mask[..., None]
 
-        y = self.res_mlp_norm_fn(z_in)
-
-        return y, inference_params
+        return self.res_mlp_norm_fn(z), inference_params

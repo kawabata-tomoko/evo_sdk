@@ -92,7 +92,7 @@ class StripedHyenaModelForCausalLM(StripedHyenaPreTrainedModel):
 
         logits, past_key_values = self.backbone(
             inputs,
-            padding_mask=attention_mask,
+            padding_mask=attention_mask,#why?
             inference_params_dict=past_key_values if use_cache else None,
         )
 
