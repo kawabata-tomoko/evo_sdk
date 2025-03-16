@@ -42,8 +42,13 @@ class StripedHyenaConfig(PretrainedConfig):
         smeared_gqa=False,
         make_vocab_size_divisible_by=8,
         log_intermediate_values=False,
+        chunk_size=8,
+        unembedding=True,
+        squeeze=True,
+        initializer_range=0.01,
         **kwargs,
     ):
+        self.initializer_range=initializer_range
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.num_filters = num_filters
@@ -74,11 +79,14 @@ class StripedHyenaConfig(PretrainedConfig):
         self.prefill_style = prefill_style
         self.max_seqlen = max_seqlen
         self.eps = eps
+        self.squeeze=squeeze
         self.state_size = state_size
         self.rotary_emb_base = rotary_emb_base
         self.smeared_gqa = smeared_gqa
         self.make_vocab_size_divisible_by = make_vocab_size_divisible_by
         self.log_intermediate_values = log_intermediate_values
+        self.chunk_size=chunk_size
+        self.unembedding=unembedding
         super().__init__(**kwargs)
 
     def to_dict(self):

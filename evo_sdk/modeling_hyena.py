@@ -6,9 +6,9 @@ from torch.nn import functional as F
 from transformers.modeling_outputs import CausalLMOutput, CausalLMOutputWithPast
 from transformers.utils import logging
 from typing import Optional, Tuple, Union
-from evo.srcs.BaseModel.StripedHyena import StripedHyena
-from evo.utils.utils import dotdict
-from evo.srcs.BaseModel.StripedHyenaPreTrainedModel import StripedHyenaPreTrainedModel
+from evo_sdk.model import StripedHyena
+from evo_sdk.utils import dotdict
+from evo_sdk.StripedHyenaPreTrainedModel import StripedHyenaPreTrainedModel
 
 logger = logging.get_logger(__name__)
 
@@ -53,14 +53,13 @@ class StripedHyenaModelForCausalLM(StripedHyenaPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
-        if self.backbone.gradient_checkpointing and self.backbone.training:
-            if use_cache:
+        if use_cache:
+            if self.backbone.gradient_checkpointing and self.backbone.training:
                 logger.warning_once(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
                 )
                 use_cache = False
-        elif labels is not None:
-            if use_cache:
+            elif labels is not None:
                 logger.warning_once(
                     "`use_cache=True` is incompatible with loss calculation. Setting `use_cache=False`..."
                 )
@@ -92,13 +91,19 @@ class StripedHyenaModelForCausalLM(StripedHyenaPreTrainedModel):
 
         logits, past_key_values = self.backbone(
             inputs,
-            padding_mask=attention_mask,#why?
+            padding_mask=attention_mask,
             inference_params_dict=past_key_values if use_cache else None,
         )
 
         loss = None
         if labels is not None:
-            loss = self._extracted_from_forward_59(logits, labels)
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            shift_logits = shift_logits.view(-1, self.config.vocab_size)
+            shift_labels = shift_labels.view(-1)
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss = F.cross_entropy(shift_logits, shift_labels)
+
         if return_dict:
             return CausalLMOutputWithPast(
                 logits=logits,
@@ -108,15 +113,6 @@ class StripedHyenaModelForCausalLM(StripedHyenaPreTrainedModel):
             )
         else:
             return logits
-
-    # TODO Rename this here and in `forward`
-    def _extracted_from_forward_59(self, logits, labels):
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        shift_logits = shift_logits.view(-1, self.config.vocab_size)
-        shift_labels = shift_labels.view(-1)
-        shift_labels = shift_labels.to(shift_logits.device)
-        return F.cross_entropy(shift_logits, shift_labels)
 
     @classmethod
     def can_generate(cls) -> bool:

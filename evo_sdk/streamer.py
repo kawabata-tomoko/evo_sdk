@@ -63,11 +63,10 @@ class ByteStreamer(BaseStreamer):
         """
         Receives tokens, decodes them, and prints them to stdout as soon as they form entire words.
         """
-        if len(value.shape) > 1:
-            if value.shape[0] > 1:
-                raise ValueError("TextStreamer only supports batch size 1")
-            else:
-                value = value[0]
+        if len(value.shape) > 1 and value.shape[0] > 1:
+            raise ValueError("TextStreamer only supports batch size 1")
+        elif len(value.shape) > 1:
+            value = value[0]
 
         if self.skip_prompt and self.next_tokens_are_prompt:
             self.next_tokens_are_prompt = False
@@ -104,5 +103,4 @@ class ByteStreamer(BaseStreamer):
 
     def on_finalized_text(self, text: str, stream_end: bool = False):
         """Prints the new text to stdout. If the stream is ending, also prints a newline."""
-# sourcery skip: swap-if-expression
         print(text, flush=True, end="" if not stream_end else None)

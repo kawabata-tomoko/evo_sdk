@@ -2,7 +2,10 @@ import torch
 
 
 def grab_first_if_tuple(x):
-    return x[0] if x.__class__.__name__ == "tuple" else x
+    if x.__class__.__name__ == "tuple":
+        return x[0]
+    else:
+        return x
     
 
 def column_split(x, num_heads, head_size):
@@ -64,9 +67,7 @@ class dotdict(dict):
 
 def ensure_divisibility(numerator, denominator):
     """Ensure that numerator is divisible by the denominator."""
-    assert (
-        numerator % denominator == 0
-    ), f"{numerator} is not divisible by {denominator}"
+    assert numerator % denominator == 0, "{} is not divisible by {}".format(numerator, denominator)
 
 
 def divide(numerator, denominator):

@@ -1,20 +1,26 @@
+from typing import Optional, Tuple, Union
+
 import torch
-from torch import nn
-from evo.srcs.BaseModel.StripedHyena import StripedHyena
-from evo.srcs.BaseModel import StripedHyenaPreTrainedModel
-from evo.utils.utils import dotdict
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.nn.init as init
 from torch.nn import CrossEntropyLoss
+from torch.utils.checkpoint import checkpoint
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers.utils import logging
-from typing import Optional, Tuple, Union
-import torch.nn.init as init
+
+from evo_sdk.StripedHyenaPreTrainedModel import StripedHyenaPreTrainedModel
+from evo_sdk.model import StripedHyena,print_rank_0
+from evo_sdk.utils import dotdict
+
 logger = logging.get_logger(__name__)
 
+
 class SeqClsForEvo(StripedHyenaPreTrainedModel):
+    supports_gradient_checkpointing=True
     def __init__(self, config, **kwargs):
         super().__init__(config, **kwargs)
-        model_config = dotdict(config.to_dict())
-        self.backbone = StripedHyena(model_config)
+        self.backbone = StripedHyena(dotdict(config.to_dict()))
         self.backbone.gradient_checkpointing = False
         self.config = config
         vocab_size = config.vocab_size
@@ -37,6 +43,7 @@ class SeqClsForEvo(StripedHyenaPreTrainedModel):
         
     def _set_gradient_checkpointing(self, enable, gradient_checkpointing_func):
         self.backbone.gradient_checkpointing = enable
+        super()._set_gradient_checkpointing(enable, gradient_checkpointing_func)
 
     def get_input_embeddings(self):
         return self.backbone.embedding_layer
@@ -55,49 +62,59 @@ class SeqClsForEvo(StripedHyenaPreTrainedModel):
     ) -> Union[Tuple, SequenceClassifierOutput]:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-        eos_index = eos_index if eos_index is not None else torch.ones(input_ids.shape[0],1,dtype=int)*input_ids.shape[1]-1
-        
-        if use_cache:
-            if self.backbone.gradient_checkpointing and self.backbone.training:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
-                use_cache = False
-            elif labels is not None:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with loss calculation. Setting `use_cache=False`..."
-                )
-                use_cache = False
-
-        logits, past_key_values = self.backbone(
+        # eos_index = eos_index if eos_index is not None else torch.ones(input_ids.shape[0],1,dtype=int)*input_ids.shape[1]-1
+        hidden_state, inference_params_dict = self.backbone(
             input_ids,
-            padding_mask=attention_mask,
             inference_params_dict=past_key_values if use_cache else None,
-        )
-        logits=logits.to(dtype=self.hidden.weight.dtype)
+            padding_mask=attention_mask
+            )
         # feature=logits[:,-1,:] #use [EOS] Instead [CLS]
-        eos_index=eos_index.to(logits.device)
-        feature = logits.gather(1, eos_index.unsqueeze(-1).expand(-1, -1, logits.size(-1)))
+        # print_rank_0(hidden_state.shape)
+        logits = self.classifier(self.ln_hidden(F.gelu(self.hidden(hidden_state))))
 
-        # feature.to(self.hidden.weight.dtype)
-        feature = self.ln_hidden(torch.tanh(self.hidden(feature)))
-        logits = torch.nn.functional.softmax(self.classifier(feature),dim=2)
+        if input_ids is not None:
+            batch_size = input_ids.shape[0]
+        else:
+            batch_size = inputs_embeds.shape[0]
+
+        if self.config.pad_token_id is None and batch_size != 1:
+            raise ValueError(
+                "Cannot handle batch sizes > 1 if no padding token is defined."
+            )
+        if self.config.pad_token_id is None:
+            sequence_lengths = -1
+        else:
+            if input_ids is not None:
+                sequence_lengths = (
+                    torch.eq(input_ids, self.config.pad_token_id).long().argmax(-1) - 1
+                ).to(logits.device)
+            else:
+                sequence_lengths = -1
+
+        pooled_logits = logits[
+            torch.arange(batch_size, device=logits.device), sequence_lengths
+        ]
+
+        # eos_index=eos_index.to(hidden_state.device)
+        # hidden_state = hidden_state.to(dtype=self.hidden.weight.dtype).gather(1, eos_index.unsqueeze(-1).expand(-1, -1, hidden_state.size(-1)))
+        # logits = self.classifier(self.ln_hidden(F.gelu(self.hidden(hidden_state))))
+        
         loss = None
+        
         if labels is not None:
             loss_fct = CrossEntropyLoss()#ignoring label:-100
-
-            labels = labels.to(logits.device)
-            loss = loss_fct(logits.view(-1,self.num_labels), labels)
-
+            labels = labels.to(pooled_logits.device)
+            loss = loss_fct(pooled_logits.view(-1,self.num_labels), labels)
+            
         if return_dict:
             return SequenceClassifierOutput(
                 loss = loss,
-                logits = logits,
-                hidden_states = None,
+                logits = pooled_logits,
+                hidden_states = None,#hidden_state,
                 attentions = None
                 )
         else:
-            return logits
+            return pooled_logits
 
     @classmethod
     def can_generate(cls) -> bool:

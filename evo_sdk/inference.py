@@ -2,7 +2,14 @@
 # This software is distributed under the terms of the Apache License, Version 2.0
 # Author: Michael Poli
 
-import contextlib
+from torch import Tensor
+from dataclasses import dataclass, field
+from typing import Optional
+
+# Copyright (c) Together
+# This software is distributed under the terms of the Apache License, Version 2.0
+# Author: Michael Poli
+
 import gc
 
 import torch
@@ -13,7 +20,7 @@ try:
     import conv1d_cpp #TODO: Check this?
 except:
     pass
-from evo.utils.utils import column_split
+from evo_sdk.utils import column_split
 
 IIR_PREFILL_MODES = [
     "recurrence",
@@ -23,6 +30,43 @@ IIR_PREFILL_MODES = [
     "canonical-fft",
     "iir-fir-caching",
 ]
+
+
+# https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/utils/generation.py
+@dataclass
+class InferenceParams:
+    """Inference parameters that are passed to the main model in order
+    to efficienly calculate and store the context during inference."""
+
+    max_seqlen: int
+    max_batch_size: int
+    seqlen_offset: int = 0
+    batch_size_offset: int = 0
+    key_value_memory_dict: dict = field(default_factory=dict)
+    lengths_per_sample: Optional[Tensor] = None
+
+    def reset(self, max_seqlen, max_batch_size):
+        self.max_seqlen = max_seqlen
+        self.max_batch_size = max_batch_size
+        self.seqlen_offset = 0
+        if self.lengths_per_sample is not None:
+            self.lengths_per_sample.zero_()
+
+
+@dataclass
+class RecurrentInferenceParams:
+    """Inference parameters passed to blocks with recurrent mode."""
+
+    fir_filter_length: int = 3
+    state_dim: int = 16
+    seqlen_offset: int = 0
+    fir_state_dict: dict = field(default_factory=dict)
+    state_dict: dict = field(default_factory=dict)
+
+    def reset(self):
+        self.fir_filter_length = 3
+        self.state_dim = 16
+        self.seqlen_offset = 0
 
 
 def canonicalize_modal_system(poles, residues):
@@ -40,13 +84,15 @@ def canonicalize_modal_system(poles, residues):
 
 def list_tensors(idx):
     for obj in gc.get_objects():
-        with contextlib.suppress(Exception):
+        try:
             if torch.is_tensor(obj) and isinstance(obj, torch.Tensor):
                 # dump to log
                 print(type(obj), obj.size())
                 el = obj[0]
                 with open(f"tensors_{idx}.txt", "a") as f:
                     f.write(f"{type(obj)} {obj.size()} {el}\n")
+        except Exception as e:
+            pass
 
 
 class HyenaInferenceEngine:
@@ -75,47 +121,46 @@ class HyenaInferenceEngine:
         padding_mask=None,
     ):
         """Compute the output state of the long convolutional filter."""
+        #u.shape -> [batch,sequence,embedding*3], padding_mask.shape ->[batch,sequence], weight.shape -> [embedding*3,1,3]
         # prepare input layout, dimensions and dispatch to fir kernel
         if fir_fn != torch.nn.functional.conv1d:
-            z_pre = fir_fn(u)[:, :L]  # B, L, D
-            z_pre = z_pre.permute(0, 2, 1)
+            # BUG:need change u shape here.
+            z_pre = fir_fn(u.permute(0, 2, 1).contiguous())[..., :L]#.permute(0, 2, 1)  # B, L, D->B, D, L
+                
         else:
-            u = u.permute(0, 2, 1)  # B, D, L
             z_pre = fir_fn(
-                u,
+                u.permute(0, 2, 1),
                 weight,
-                bias=None,  # don't pass it here, add manually instead!  source of small error
-                stride=1,
-                padding=fir_length - 1,
-                groups=u.shape[1],
+                bias=bias,  # don't pass it here, add manually instead!  source of small error
+                stride=(1,),
+                padding=(fir_length - 1,),
+                groups=u.shape[2],
             )[..., :L]
-
-            # add manually instead!  source of small error
-            z_pre = z_pre + bias[None, :, None]
 
         # handle padding post fir, the only place with biases
         if type(padding_mask) == torch.Tensor:
             z_pre = z_pre * padding_mask[:, None]
 
-        if inference_params is None:
-            fir_state = None
-
-        elif fir_fn != torch.nn.functional.conv1d:
-            fir_state = u[:, -fir_length + 1 :].permute(0, 2, 1)
+        if inference_params is not None:
+            # handle seqlen last and dim last cases for `u`
+            if fir_fn != torch.nn.functional.conv1d:
+                fir_state = u[:, -fir_length + 1 :].permute(0, 2, 1)
+            else:
+                fir_state = u[..., -fir_length + 1 :]
         else:
-            fir_state = u[..., -fir_length + 1 :]
+            fir_state = None
         return z_pre, fir_state
 
     def parallel_iir(
         self,
-        z_pre,
-        h,
-        D,
-        L,
-        poles,
-        residues,
-        t,
-        dims,
+        z_pre,#z_pre.shape -> [batch,embedding*3,sequence]
+        h,# h.shape -> [1,embedding,sequence]
+        D,# D.shape -> [hidden_size]
+        L,#sequence
+        poles,#[self.num_systems, self.state_size, 1]
+        residues,#[self.num_systems, self.state_size, 1]
+        t,# t.shape -> [1,1,sequence]
+        dims,#(self.hidden_size,self.num_attention_heads,self.hidden_size_per_attention_head,self.state_size,self.hyena_filter_groups)
         layer_idx,
         inference_params=None,
         prefill_style="fft",
@@ -126,15 +171,16 @@ class HyenaInferenceEngine:
         long_fir_threshold=None,
     ):
         """Compute the output state of the short convolutional filter."""
+        # print(z_pre.shape,dims)
         fft_size = 2 * L
         hidden_size, num_attention_heads, hidden_size_per_attention_head, _, _ = dims
         # Compatibility with training infra that column splits the projections
         if column_split_hyena:
             z = z_pre.reshape(
-                z_pre.shape[0],
+                z_pre.shape[0],#batch
                 num_attention_heads,
                 3 * hidden_size_per_attention_head,
-                z_pre.shape[2],
+                z_pre.shape[2],#sequence
             )
             x2, x1, v = (
                 z[:, :, :hidden_size_per_attention_head],
@@ -164,32 +210,34 @@ class HyenaInferenceEngine:
                 residues=residues,
             )
 
-        elif use_flashfft and (L % 2) == 0:  # only works with even L
-            y = fftconv_fn(
-                x1v.to(dtype=torch.bfloat16).contiguous(),
-                h.to(dtype=torch.float32),
-            )
-            X_s = None
-
-        elif long_fir_threshold is None:
-            H = torch.fft.rfft(h.to(dtype=torch.float32), n=fft_size) / fft_size
-            X_s = torch.fft.fft(x1v.to(dtype=torch.float32), n=fft_size)
-            X = X_s[..., : H.shape[-1]]
-            if len(z_pre.shape) > 3:
-                H = H.unsqueeze(1)
-            y = torch.fft.irfft(X * H, n=fft_size, norm="forward")[..., :L]
-
         else:
-            assert h.shape[0] == 1, "batch size must be 1 for long_fir_threshold"
-            h = h[0][:, None]  # rearrange to d, 1, l for depthwise conv1d
-            h = h[..., :long_fir_threshold]
-            y = F.conv1d(
-                x1v,
-                h.to(dtype=x1v.dtype),
-                stride=1,
-                groups=x1v.shape[1],
-                padding=h.shape[-1] - 1,
-            )[..., :L]
+            if use_flashfft and (L % 2) == 0:  # only works with even L
+                
+                y = fftconv_fn(
+                    x1v.to(dtype=torch.bfloat16).contiguous(),
+                    h.to(dtype=torch.float32).squeeze(0).contiguous(),
+                )
+                X_s = None
+
+            elif long_fir_threshold is None:
+                H = torch.fft.rfft(h.to(dtype=torch.float32), n=fft_size) / fft_size
+                X_s = torch.fft.fft(x1v.to(dtype=torch.float32), n=fft_size)
+                X = X_s[..., : H.shape[-1]]
+                if len(z_pre.shape) > 3:
+                    H = H.unsqueeze(1)
+                y = torch.fft.irfft(X * H, n=fft_size, norm="forward")[..., :L]
+
+            else:
+                assert h.shape[0] == 1, "batch size must be 1 for long_fir_threshold"
+                h = h[0][:, None]  # rearrange to d, 1, l for depthwise conv1d
+                h = h[..., :long_fir_threshold]
+                y = F.conv1d(
+                    x1v,
+                    h.to(dtype=x1v.dtype),
+                    stride=1,
+                    groups=x1v.shape[1],
+                    padding=h.shape[-1] - 1,
+                )[..., :L]
 
         y = y.to(dtype=x1v.dtype)
         y = (y + x1v * D.unsqueeze(-1)) * x2
@@ -209,7 +257,10 @@ class HyenaInferenceEngine:
                     fftconv_fn=fftconv_fn,
                 )
 
-            elif prefill_style != "recurrence":
+            elif prefill_style == "recurrence":
+                # recurrent prefill is done before
+                pass
+            else:
                 raise NotImplementedError
             if self.low_mem_mode:
                 # TODO: smarter gc
@@ -378,4 +429,5 @@ class HyenaInferenceEngine:
         x = (log_poles * t).exp()
         # [batch, hidden_size, state_dim, 2 * seqlen]
         X = torch.fft.fft(x, n=fft_size).repeat(bs, 1, 1, 1)
-        return torch.fft.ifft(U[..., None, :] * X, n=fft_size)[..., :L]
+        state = torch.fft.ifft(U[..., None, :] * X, n=fft_size)[..., :L]
+        return state

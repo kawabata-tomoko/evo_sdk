@@ -1,6 +1,6 @@
 {
     "_commit_hash": null,
-    "_name_or_path": "",
+    "_name_or_path": "/home/zhengyulong/models/project/",
     
     "architectures": [
       "StripedHyenaModelForCausalLM"
@@ -10,7 +10,15 @@
       16,
       24
     ],
-    "auto_map": {},
+     "auto_map": {
+        "AutoConfig": "configuration_hyena.StripedHyenaConfig",
+        "AutoModelForCausalLM": "modeling_hyena.StripedHyenaModelForCausalLM",
+        "AutoModelForSequenceClassification":"EvoForSequenceClassification.SeqClsForEvo",
+        "AutoTokenizer": [
+            "ByteTokenizer.ByteTokenizer",
+            null
+        ]
+    },
     "column_split": true,
     "column_split_hyena": true,
     "eps": 1e-06,
@@ -61,6 +69,7 @@
     "mlp_output_init_method": "torch.nn.init.zeros_",
     "model_parallel_size": 1,
     "model_type": "stripedhyena",
+    "seqlen":32768,
     "num_attention_heads": 32,
     "num_filters": 4096,
     "num_layers": 32,
@@ -88,6 +97,8 @@
     "use_flash_rmsnorm": false,
     "use_flashfft": false,
     "use_interpolated_rotary_pos_emb": true,
-    "vocab_size": 512
+    "vocab_size": 512,
+    "low_mem_mode":true,
+    "hyena_block_dtype":"bf16"
   }
   

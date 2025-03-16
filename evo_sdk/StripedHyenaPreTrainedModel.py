@@ -9,6 +9,8 @@ from stripedhyena.model import StripedHyena
 from stripedhyena.tokenizer import CharLevelTokenizer
 from typing import Union,Optional,Callable
 import torch.nn.init as init
+from torch.utils.checkpoint import checkpoint
+
 logger = logging.get_logger(__name__)
 
 
@@ -26,19 +28,30 @@ class StripedHyenaPreTrainedModel(PreTrainedModel):
         if isinstance(module, nn.Linear):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
-            init.xavier_uniform_(module.weight,gain=nn.init.calculate_gain("tanh"))
+            init.xavier_uniform_(module.weight,gain=1)
             
             # module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
             if module.bias is not None:
                 init.constant_(module.bias,0.0)
                 # module.bias.data.zero_()
-        # elif isinstance(module, nn.Embedding):
-        #     module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-        #     if module.padding_idx is not None:
-        #         module.weight.data[module.padding_idx].zero_()
+
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
+        elif isinstance(module, nn.Conv1d):
+            init.xavier_uniform_(
+                module.weight,
+                gain=1,
+                )
+            module.bias.data.zero_()
+        elif isinstance(module, nn.ConvTranspose1d): 
+            init.xavier_uniform_( module.weight, gain=1, ) 
+            if module.bias is not None: 
+                init.constant_(module.bias, 0.0)
     def export_StripedHyena_model(self,device=None):
         model = StripedHyena(dotdict(self.config.to_dict()))
         model.load_state_dict(self.backbone.state_dict(), strict=True)
@@ -46,6 +59,28 @@ class StripedHyenaPreTrainedModel(PreTrainedModel):
         if device is not None:
             model = model.to(device)
         return model
+
+    def _set_gradient_checkpointing(self, enable: bool = True, gradient_checkpointing_func: Callable = checkpoint):
+        is_gradient_checkpointing_set = False
+
+        # Apply it on the top-level module in case the top-level modules supports it
+        # for example, LongT5Stack inherits from PreTrainedModel.
+        if hasattr(self, "gradient_checkpointing"):
+            self._gradient_checkpointing_func = gradient_checkpointing_func
+            self.gradient_checkpointing = enable
+            is_gradient_checkpointing_set = True
+
+        for module in self.modules():
+            if hasattr(module, "gradient_checkpointing"):
+                module._gradient_checkpointing_func = gradient_checkpointing_func
+                module.gradient_checkpointing = enable
+                is_gradient_checkpointing_set = True
+
+        if not is_gradient_checkpointing_set:
+            raise ValueError(
+                f"{self.__class__.__name__} is not compatible with gradient checkpointing. Make sure all the architecture support it by setting a boolean attribute"
+                " gradient_checkpointing to modules of the model that uses checkpointing."
+            )
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
